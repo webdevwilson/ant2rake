@@ -1,3 +1,5 @@
-== ant2rake
-
-You should document your project here.
+Ant2Rake
+========================================================================================================
+The aim of this gem is to help you convert your nasty ant build scripts to JRuby 1.5 compatible scripts.
+This will hopefully get you a long way in converting them.  However, I do not think it would be possible
+to completely convert them automatically.  The goal is to get you about 90% of the way there.
