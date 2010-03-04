@@ -7,14 +7,14 @@ require 'rake/testtask'
 require 'spec/rake/spectask'
 
 spec = Gem::Specification.new do |s|
-  s.name = 'ant2rake'
+  s.name = 'Ant2Rake'
   s.version = '0.0.1'
   s.has_rdoc = true
   s.extra_rdoc_files = ['README', 'LICENSE']
-  s.summary = 'Your summary here'
+  s.summary = 'Ant2Rake is a Ruby gem that automatically converts ant build.xml files to JRuby 1.5 build scripts'
   s.description = s.summary
-  s.author = ''
-  s.email = ''
+  s.author = 'Kerry R Wilson'
+  s.email = 'kwilson@goodercode.com'
   # s.executables = ['your_executable_here']
   s.files = %w(LICENSE README Rakefile) + Dir.glob("{bin,lib,spec}/**/*")
   s.require_path = "lib"
@@ -51,7 +51,7 @@ task :test_convert do
   $: << File.join(File.dirname(__FILE__),'lib')
   require 'ant2rake'
   require 'ant2rake/cli'
-
+  FileUtils.mkdir('pkg') unless File.directory? 'pkg'
   Ant2Rake::Cli::Runner.new(File.join(File.dirname(__FILE__),'test','build.xml'),File.join(File.dirname(__FILE__),'pkg','build.rb')).go
 
 end
