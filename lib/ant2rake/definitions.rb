@@ -139,8 +139,8 @@ RUBY
 RUBY
   end
 
-  ant_element 'xjc' do
-    
+  ant_element 'sequential' do
+    ant2rake
   end
 
 end
