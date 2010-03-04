@@ -4,29 +4,32 @@ module Ant2Rake
 
   class << self
 
-    def element_type(name, &proc)
+    def ant_element(name, &proc)
       Elements[name] = Element.new name, proc
     end
  
     def ant2rake(element)
 
-      @depth = @depth || 0
+      @depth = @depth || -1
       @depth += 1
 
-      out = out || ''
+      out = ''
       if Elements[element.name]
-        out << Elements[element.name].process(element)
+        ruby_code_for_element = Elements[element.name].process(element)
+        if !ruby_code_for_element
+          print "Error creating ruby code for #{element.name} (returned #{ruby_code_for_element})\n"
+          ruby_code_for_element = "\n=begin\n#{element}\n=end\n"
+        end
+        out << ruby_code_for_element
+      else
+        # print undefined elements in comments
+        out << "\n=begin\n#{element}\n=end\n"
       end
-
-      #      element.each_element do |ele|
-      #        p "#{@depth} #{ele.name}"
-      #        ant2rake ele
-      #      end
 
       @depth -= 1
       return out
     end
-    
+
   end
 
   class Elements
@@ -64,24 +67,27 @@ module Ant2Rake
       if(m = (/^\$\{([\S]+)\}$/.match(self)))
         "@properties['#{m[1]}']"
       else
-        "\"#{self}\""
+        replaced = self.gsub(/\$\{([A-Za-z\.\-_]+)\}/,'#{@properties[\'\1\']}')
+        "\"#{replaced}\""
       end
     end
 
     def to_identifier
-      def to_identifier
-        "#{self.gsub(/\.|\s|-|\/|\'/, '_').downcase}".to_sym
-      end
+      "#{self.gsub(/\.|\s|-|\/|\'/, '_').downcase}".to_sym
     end
 
   end
 
   # add ant2rake method to element class
   REXML::Element.class_eval do
-    define_method :ant2rake do
+    def ant2rake(element=false)
       out = ''
-      self.each_element do |ele|
-        out << Ant2Rake::ant2rake(ele)
+      if element
+        out << Ant2Rake::ant2rake(element)
+      else
+        self.each_element do |ele|
+          out << Ant2Rake::ant2rake(ele)
+        end
       end
       return out
     end

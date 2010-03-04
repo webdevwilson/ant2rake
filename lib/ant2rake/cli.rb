@@ -14,10 +14,7 @@ module Ant2Rake
       end
 
       def go
-        
-        @output << "require \'fileutils\'\n\n"
         @output << Ant2Rake::ant2rake(@doc.root)
-        p @output
       end
 
     end
