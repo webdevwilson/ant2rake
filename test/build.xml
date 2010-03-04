@@ -1,0 +1,560 @@
+<project name="pica-common" default="package" basedir=".">
+  <property environment="env"/>
+  <property name="build.dir" location="${basedir}/build"/>
+  <property name="dist.dir" location="${basedir}/dist"/>
+  <property name="src.dir" location="${basedir}/src"/>
+  <property name="gen.src.dir" location="${basedir}/build/src" />
+  <property name="build.classes.dir" location="${build.dir}/classes"/>
+  <property name="build.test.classes.dir" location="${build.dir}/test_classes"/>
+  <property name="build.functional.test.classes.dir" location="${build.dir}/functional_test_classes"/>
+  <property name="unit-tests.dir" location="${basedir}/unit-tests"/>
+  <property name="functional-tests.dir" location="${basedir}/functional-tests"/>
+  <property name="functional-tests.dir" location="${basedir}/functional-tests"/>
+  <property name="devlib.dir" location="${basedir}/devlib"/>
+  <property name="unit.test.results.dir" location="${build.dir}/unit-test-results"/>
+  <property name="functional.test.results.dir" location="${build.dir}/functional-test-results"/>
+  <property name="build.lib.dir" location="${build.dir}/lib"/>
+  <property name="conf.dir" location="${basedir}/conf"/>
+  <property name="build.conf.dir" location="${build.dir}/conf"/>
+  <property name="jarfile.name" value="${ant.project.name}.jar"/>
+  <property name="jarfile.fullpath" location="${build.dir}/${jarfile.name}"/>
+  <property name="lib.dir" location="${basedir}/lib"/>
+  <property name="project.compiletime.lib.dir" location="${lib.dir}/compile-time"/>
+  <property name="project.runtime.lib.dir" location="${lib.dir}/run-time"/>
+  <property name="pica.dependencies.lib.dir" location="${lib.dir}/pica-dependencies"/>
+  <property name="test-utilities.dir" location="${basedir}/test-utilities"/>
+  <property name="build.test.utilities.dir" location="${build.dir}/test-utilities"/>
+  <property name="project.title" value="${ant.project.name}"/>
+  <property name="instrumented.classes.dir" location="${build.dir}/instrumented_classes"/>
+  <property name="coverage.dir" location="${build.dir}/coverage"/>
+  <property name="common.project.dir" location="${basedir}/../pica-common"/>
+  <property name="common.devlib.dir" location="${common.project.dir}/devlib"/>
+  <property name="common.resource.dir" location="${common.project.dir}/resources"/>
+
+  <property name="zipfile.name" value="${build.dir}/${ant.project.name}.zip"/>
+  <property name="base.zipincludes" value="${jarfile.name},lib/*,conf/**/*"/>
+
+  <property name="deploy.script" value="${build.dir}/deploy.rb"/>
+  <property name="build.key.fragment" value="${build.dir}/build_key.rb"/>
+  <basename property="basedir.name" file="${basedir}"/>
+
+  <property name="label" value="LOCAL-BUILD"/>
+  <property name="projectname" value="${ant.project.name}"/>
+  <property name="cctimestamp" value="now"/>
+  <property name="build.version" value="${label}"/>
+
+  <property name="base.cruise.prefix" value="dashboard/tab/build/download/artifacts/${projectname}/log${cctimestamp}"/>
+  <property name="base.cruise.suffix" value=".xml/acceptance-tests-report"/>
+  <path id="devlib.classpath">
+    <fileset dir="${devlib.dir}" includes="*.jar"/>
+  </path>
+
+  <path id="common.devlib.path">
+    <fileset dir="${common.devlib.dir}" includes="*.jar"/>
+  </path>
+
+  <path id="functional.test.classpath"/>
+
+  <taskdef resource="emma_ant.properties" classpathref="common.devlib.path"/>
+
+  <target name="create-project-directories" description="Set up common directory structures">
+    <mkdir dir="${project.compiletime.lib.dir}"/>
+    <mkdir dir="${project.runtime.lib.dir}"/>
+    <mkdir dir="${devlib.dir}"/>
+  </target>
+
+  <target name="prepare">
+    <available file="${unit-tests.dir}" property="tests.exist"/>
+    <available file="${functional-tests.dir}" property="functional.tests.exist"/>
+    <available file="${project.compiletime.lib.dir}" property="compiletime.lib.dir.exists"/>
+    <available file="${project.runtime.lib.dir}" property="runtime.lib.dir.exists"/>
+    <available file="${test-utilities.dir}" property="test.utilities.exists"/>
+    <available file="${pica.dependencies.lib.dir}" property="pica.dependencies.lib.dir.exists"/>
+
+    <condition property="should.run.unit.test.reports">
+      <and>
+        <not>
+          <os family="windows"/>
+        </not>
+        <isset property="tests.exist"/>
+      </and>
+    </condition>
+
+    <condition property="should.run.functional.test.reports">
+      <and>
+        <not>
+          <os family="windows"/>
+        </not>
+        <isset property="functional.tests.exist"/>
+      </and>
+    </condition>
+  </target>
+
+  <target name="clean" depends="prepare" description="clean build artifacts">
+    <delete dir="${build.dir}"/>
+    <delete dir="${dist.dir}"/>
+  </target>
+
+  <macrodef name="build-and-gather-test">
+    <attribute name="project.name"/>
+    <attribute name="dest.dir" default="${devlib.dir}"/>
+    <attribute name="project.dir" default="${basedir}/../@{project.name}"/>
+    <attribute name="ant.file" default="@{project.dir}/build.xml"/>
+    <attribute name="project.artifact" default="@{project.dir}/build/@{project.name}-test-utilities.jar"/>
+    <sequential>
+      <ant antfile="@{ant.file}" dir="@{project.dir}" target="jar-test-utilities" inheritall="false"/>
+      <copy todir="@{dest.dir}" file="@{project.artifact}"/>
+    </sequential>
+  </macrodef>
+
+  <macrodef name="build-and-gather">
+    <attribute name="project.name"/>
+    <attribute name="dest.dir" default="${pica.dependencies.lib.dir}"/>
+    <attribute name="project.dir" default="${basedir}/../@{project.name}"/>
+    <attribute name="ant.file" default="@{project.dir}/build.xml"/>
+    <attribute name="project.artifact" default="@{project.dir}/build/@{project.name}.jar"/>
+    <sequential>
+      <ant antfile="@{ant.file}" dir="@{project.dir}" inheritall="false">
+        <property name="external.build" value="true"/>
+      </ant>
+      <copy todir="@{dest.dir}" file="@{project.artifact}"/>
+    </sequential>
+  </macrodef>
+
+  <taskdef name="xjc" classname="com.sun.tools.xjc.XJCTask">
+    <classpath>
+      <fileset dir="${common.devlib.dir}" includes="*.jar"/>
+    </classpath>
+  </taskdef>
+
+  <target name="generate_jaxb_classes">
+    <mkdir dir="${gen.src.dir}"/>
+    <xjc schema="${jaxb.schema}" destDir="${gen.src.dir}" package="${jaxb.package}"/>
+  </target>
+
+  <target name="gather_dependencies">
+    <mkdir dir="${build.lib.dir}"/>
+  </target>
+
+  <target name="gather_compiletime_jars" if="compiletime.lib.dir.exists">
+    <copy todir="${build.lib.dir}" failonerror="false">
+      <fileset dir="${project.compiletime.lib.dir}"/>
+    </copy>
+  </target>
+
+  <target name="gather_runtime_jars" if="runtime.lib.dir.exists">
+    <copy todir="${build.lib.dir}" failonerror="false">
+      <fileset dir="${project.runtime.lib.dir}"/>
+    </copy>
+  </target>
+
+  <target name="gather_pica_jars" if="pica.dependencies.lib.dir.exists">
+    <copy todir="${build.lib.dir}" failonerror="false">
+      <fileset dir="${pica.dependencies.lib.dir}"/>
+    </copy>
+  </target>
+
+  <target name="gather_project_jars" depends="gather_compiletime_jars, gather_runtime_jars, gather_pica_jars"/>
+
+  <target name="compile" depends="before_compile, do_compile, after_compile"/>
+
+  <target name="before_compile"/>
+
+  <target name="do_compile" depends="prepare, gather_dependencies, gather_project_jars">
+    <path id="compile.classpath">
+      <fileset dir="${build.lib.dir}" includes="*.jar,*.zip"/>
+      <pathelement location="${build.classes.dir}"/>
+    </path>
+
+    <mkdir dir="${build.classes.dir}"/>
+    <javac srcdir="${src.dir}"
+           destdir="${build.classes.dir}"
+           classpathref="compile.classpath"
+           debug="true"
+           target="1.5"/>
+
+    <copy todir="${build.classes.dir}">
+      <fileset dir="${src.dir}" includes="**/*.xml,**/*.properties,**/*.xsl,**/*.enc,**/*.key,**/*.sql"/>
+    </copy>
+  </target>
+
+  <target name="after_compile"/>
+
+  <target name="before_compile_test"/>
+
+  <target name="do_compile_test" if="tests.exist">
+    <mkdir dir="${build.test.classes.dir}"/>
+    <path id="compile.test.classpath">
+      <path refid="devlib.classpath"/>
+      <pathelement location="${build.classes.dir}"/>
+      <path refid="compile.classpath"/>
+      <pathelement location="${build.test.utilities.dir}"/>
+    </path>
+
+    <javac srcdir="${unit-tests.dir}"
+           destdir="${build.test.classes.dir}"
+           classpathref="compile.test.classpath"
+           debug="true"/>
+    <copy todir="${build.test.classes.dir}">
+      <fileset dir="${unit-tests.dir}" includes="**/*.xml"/>
+    </copy>
+  </target>
+
+  <target name="after_compile_test"/>
+
+  <property name="emma.enabled" value="true"/>
+  <target name="instrument_source" depends="compile">
+    <mkdir dir="${instrumented.classes.dir}"/>
+    <mkdir dir="${coverage.dir}"/>
+    <path id="instrumentation.path">
+      <pathelement location="${instrumented.classes.dir}"/>
+      <path refid="common.devlib.path"/>
+    </path>
+    <emma enabled="${emma.enabled}">
+      <instr instrpath="${build.classes.dir}"
+             destdir="${instrumented.classes.dir}"
+             metadatafile="${coverage.dir}/metadata.emma"/>
+    </emma>
+  </target>
+
+  <target name="compile_test"
+          depends="instrument_source, compile-test-utitilies, before_compile_test, do_compile_test, after_compile_test"/>
+
+  <target name="get_pica_test" unless="cruise.build">
+    <build-and-gather project.name="pica-test" dest.dir="${devlib.dir}"/>
+  </target>
+
+  <path id="test.utilities.classpath"/>
+  <target name="compile-test-utitilies" depends="compile" if="test.utilities.exists">
+    <mkdir dir="${build.test.utilities.dir}"/>
+    <path id="compile.test.utilities.classpath">
+      <path refid="compile.classpath"/>
+      <path refid="test.utilities.classpath"/>
+      <path refid="devlib.classpath"/>
+      <pathelement location="${build.classes.dir}"/>
+    </path>
+
+    <javac srcdir="${test-utilities.dir}"
+           destdir="${build.test.utilities.dir}"
+           target="1.5"
+           classpathref="compile.test.utilities.classpath"/>
+  </target>
+
+  <target name="get-dependent-test-utilities"/>
+
+  <target name="jar-test-utilities"
+          depends="get-dependent-test-utilities, compile-test-utitilies"
+          if="test.utilities.exists">
+    <jar basedir="${build.test.utilities.dir}" jarfile="${build.dir}/${ant.project.name}-test-utilities.jar"/>
+  </target>
+
+  <target name="gather_functional_dependencies"/>
+  <target name="compile_functional_test"
+          depends="instrument_source, gather_functional_dependencies, jar-test-utilities"
+          if="functional.tests.exist">
+    <mkdir dir="${build.functional.test.classes.dir}"/>
+    <path id="compile.functional.test.classpath">
+      <path refid="devlib.classpath"/>
+      <pathelement location="${build.classes.dir}"/>
+      <path refid="compile.classpath"/>
+      <pathelement location="${build.test.utilities.dir}"/>
+    </path>
+
+    <javac srcdir="${functional-tests.dir}"
+           destdir="${build.functional.test.classes.dir}"
+           classpathref="compile.functional.test.classpath"
+           target="1.5"
+           debug="true"/>
+
+    <copy todir="${build.functional.test.classes.dir}">
+      <fileset dir="${functional-tests.dir}"
+               includes="**/*.xml,**/*.properties,**/*.xsl,**/*.enc,**/*.key,**/*.sql"/>
+
+    </copy>
+  </target>
+
+  <target name="run-unit-tests" depends="compile_test" if="tests.exist">
+    <mkdir dir="${unit.test.results.dir}"/>
+    <junit failureproperty="unit.tests.failed" fork="true" forkmode="once">
+      <assertions>
+        <enable/>
+      </assertions>
+      <classpath id="run.test.classpath">
+        <path refid="instrumentation.path"/>
+        <path refid="compile.test.classpath"/>
+        <pathelement location="${build.test.classes.dir}"/>
+        <pathelement location="${build.test.utilities.dir}"/>
+      </classpath>
+
+      <formatter type="xml"/>
+      <batchtest todir="${unit.test.results.dir}">
+        <fileset dir="${build.test.classes.dir}" includes="**/*Tests.class"/>
+      </batchtest>
+      <jvmarg value="-Demma.coverage.out.file=${coverage.dir}/coverage.emma"/>
+      <jvmarg value="-Demma.coverage.out.merge=true"/>
+    </junit>
+  </target>
+
+  <macrodef name="generate-junit-report">
+    <attribute name="report.dir"/>
+    <sequential>
+      <junitreport todir="@{report.dir}">
+        <fileset dir="@{report.dir}" includes="TEST-*.xml"/>
+        <report todir="@{report.dir}"/>
+      </junitreport>
+    </sequential>
+  </macrodef>
+
+  <target name="generate-unit-test-report" if="should.run.unit.test.reports">
+    <generate-junit-report report.dir="${unit.test.results.dir}"/>
+  </target>
+
+  <target name="fail-if-tests-failed">
+    <fail if="unit.tests.failed"/>
+  </target>
+
+  <target name="unit-test-report" depends="generate-unit-test-report, fail-if-tests-failed"/>
+
+  <target name="unit-test" depends="clean, run-unit-tests, unit-test-report" description="run unit tests"/>
+
+  <target name="before_functional_tests"/>
+  <target name="run-functional-tests"
+          depends="compile_functional_test, before_functional_tests"
+          if="functional.tests.exist">
+    <mkdir dir="${functional.test.results.dir}"/>
+    <junit failureproperty="functional.tests.failed" fork="true" forkmode="once">
+      <assertions>
+        <enable/>
+      </assertions>
+      <classpath id="run.test.classpath">
+        <path refid="instrumentation.path"/>
+        <path refid="compile.classpath"/>
+        <path refid="compile.functional.test.classpath"/>
+        <pathelement location="${build.functional.test.classes.dir}"/>
+        <path refid="functional.test.classpath"/>
+      </classpath>
+
+      <formatter type="xml"/>
+      <batchtest todir="${functional.test.results.dir}">
+        <fileset dir="${build.functional.test.classes.dir}" includes="**/*Tests.class"/>
+      </batchtest>
+      <jvmarg value="-Demma.coverage.out.file=${coverage.dir}/coverage.emma"/>
+      <jvmarg value="-Demma.coverage.out.merge=true"/>
+    </junit>
+  </target>
+
+  <target name="generate-functional-test-report" if="should.run.functional.test.reports">
+    <generate-junit-report report.dir="${functional.test.results.dir}"/>
+  </target>
+
+  <target name="fail-if-functional-tests-failed">
+    <fail if="functional.tests.failed"/>
+  </target>
+  <target name="functional-test-report" depends="generate-functional-test-report, fail-if-functional-tests-failed"/>
+
+  <target name="functional-test"
+          depends="clean, run-functional-tests, functional-test-report"
+          description="run functional tests"/>
+
+  <target name="all-tests" depends="unit-test, functional-test" description="run unit and functional tests"/>
+  <target name="capture-timestamp">
+    <tstamp>
+      <format property="build.time" pattern="MM/dd/yyyy HH:mm:ss"/>
+    </tstamp>
+  </target>
+
+  <target name="jar" depends="unit-test, capture-timestamp">
+    <jar basedir="${build.classes.dir}" jarfile="${build.dir}/${ant.project.name}.jar">
+      <manifest>
+        <attribute name="Implementation-Title" value="${project.title}"/>
+        <attribute name="Implementation-Version" value="${build.version}"/>
+      </manifest>
+    </jar>
+  </target>
+
+  <target name="executable-jar" depends="unit-test, capture-timestamp">
+    <mkdir dir="${conf.dir}"/>
+    <copy todir="${build.conf.dir}">
+      <fileset dir="${conf.dir}"/>
+    </copy>
+    <path id="manifest.path">
+      <fileset dir="${build.lib.dir}"/>
+      <path path="${build.conf.dir}"/>
+      <pathelement path="../pica-libs/keys.jar"/>
+    </path>
+    <manifestclasspath property="manifest.classpath" jarfile="${jarfile.fullpath}">
+      <classpath refid="manifest.path"/>
+    </manifestclasspath>
+    <copy todir="${build.classes.dir}">
+      <fileset dir="${src.dir}" includes="**/*.xml"/>
+    </copy>
+    <jar basedir="${build.classes.dir}" jarfile="${jarfile.fullpath}">
+      <manifest>
+        <attribute name="Implementation-Title" value="${project.title}"/>
+        <attribute name="Implementation-Version" value="${build.version}"/>
+        <attribute name="Class-Path" value="${manifest.classpath}"/>
+        <attribute name="Main-Class" value="${main.class.name}"/>
+      </manifest>
+    </jar>
+  </target>
+
+  <target name="cucumber" depends="gather_dependencies">
+    <property name="ruby.bin.dir" location="${lib.dir}/jruby/bin"/>
+    <mkdir dir="${build.dir}"/>
+
+    <property name="fail.on.error" value="true"/>
+    <exec executable="${ruby.bin.dir}/cucumber"
+          failonerror="false"
+          failifexecutionfails="true"
+          resultproperty="acceptance.tests.failed">
+      <env key="PATH" path="${env.PATH}:${ruby.bin.dir}"/>
+      <env key="JAVA_MEM" value="-Xmx750m"/>
+      <arg value="--tags"/>
+      <arg value="~@ignore"/>
+      <arg value="-r"/>
+      <arg value="lib/acceptance-tests.rb"/>
+      <arg value="-r"/>
+      <arg value="sprout_core"/>
+      <arg value="-r"/>
+      <arg value="features/step_definitions/policy_definitions.rb"/>
+      <arg value="-f"/>
+      <arg value="Pica::Formatter::SproutCore"/>
+      <arg value="-o"/>
+      <arg value="${build.dir}/report_data.js"/>
+      <arg value="features"/>
+    </exec>
+
+    <condition property="fail.the.build" value="true">
+      <and>
+        <istrue value="${fail.on.error}"/>
+        <not>
+          <equals arg1="0" arg2="${acceptance.tests.failed}"/>
+        </not>
+      </and>
+    </condition>
+  </target>
+
+  <target name="set-passing-cruise-path" unless="fail.the.build">
+    <property name="cruise.path" value="${base.cruise.prefix}L${label}${base.cruise.suffix}/"/>
+  </target>
+
+  <target name="set-failing-cruise-path" if="fail.the.build">
+    <property name="cruise.path" value="${base.cruise.prefix}${base.cruise.suffix}/"/>
+  </target>
+
+  <target name="set-cruise-path" depends="set-passing-cruise-path, set-failing-cruise-path"/>
+
+  <target name="acceptance-tests-report" depends="cucumber, set-cruise-path">
+    <exec executable="rake" dir="${build.dir}"/>
+
+    <move todir="${build.dir}/apps/reports/models" overwrite="yes"
+          file="${build.dir}/report_data.js"/>
+    <replace file="${build.dir}/Buildfile" token="$CRUISE_PATH" value="${cruise.path}"/>
+    <exec executable="${ruby.bin.dir}/sc-build" dir="${build.dir}">
+      <env key="PATH" path="${env.PATH}:${ruby.bin.dir}"/>
+    </exec>
+    <move todir="${build.dir}/acceptance-tests-report">
+      <fileset dir="${build.dir}/tmp/build/${cruise.path}"/>
+    </move>
+
+    <fail  if="fail.the.build"/>
+  </target>
+
+  <target name="prepare_for_zip"/>
+
+  <target name="create.project.fragment">
+    <mkdir dir="${build.dir}"/>
+    <echo file="${build.key.fragment}" message="PROJECT_NAME = &quot;${basedir.name}&quot;&#xA;"/>
+  </target>
+
+  <target name="create_build_key_fragment" depends="create.project.fragment" if="cruise.build">
+    <echo file="${build.key.fragment}"
+          message="BUILD_KEY = &quot;${cctimestamp}L${label}&quot;&#xA;&#xA;"
+          append="yes"/>
+  </target>
+
+  <target name="create_deploy_script" depends="create_build_key_fragment">
+    <concat destfile="${deploy.script}">
+      <filelist>
+        <file name="${common.resource.dir}/cruise_dist_zip.rb"/>
+        <file name="${build.key.fragment}"/>
+        <file name="${basedir}/deploy.rb"/>
+      </filelist>
+    </concat>
+  </target>
+
+  <target name="dist-zip" depends="executable-jar, prepare_for_zip, create_deploy_script">
+    <property name="zip.includes" value="${base.zipincludes}"/>
+    <copy todir="${build.dir}">
+      <fileset dir="${basedir}" includes="${zip.includes}"/>
+    </copy>
+    <zip basedir="${build.dir}" includes="${zip.includes}" zipfile="${zipfile.name}"/>
+  </target>
+
+  <target name="emma-report"
+          depends="clean, unit-test"
+          description="Run code coverage reports">
+    <emma enabled="${emma.enabled}">
+      <report sourcepath="${src.dir}">
+        <fileset dir="${coverage.dir}" includes="*.emma"/>
+        <html outfile="${coverage.dir}/coverage.html"/>
+      </report>
+    </emma>
+  </target>
+
+  <target name="cpd-report" description="Run code duplication report">
+    <taskdef name="cpd" classname="net.sourceforge.pmd.cpd.CPDTask" classpathref="common.devlib.path"/>
+    <property name="cpd.dir" location="${build.dir}/cpd"/>
+    <property name="cpd.xml.file" location="${cpd.dir}/cpd.xml"/>
+    <mkdir dir="${cpd.dir}"/>
+    <cpd minimumTokenCount="20"
+         format="xml"
+         outputFile="${cpd.xml.file}"
+         ignoreLiterals="true"
+         ignoreIdentifiers="true"
+         encoding="UTF-8">
+      <fileset dir="${src.dir}" includes="**/*.java"/>
+    </cpd>
+    <xslt in="${cpd.xml.file}" style="${common.resource.dir}/cpdhtml.xslt" out="${cpd.dir}/cpd.html"/>
+  </target>
+
+  <property name="javancss.dir" location="${build.dir}/javancss"/>
+  <property name="javancss.xml.file" location="${javancss.dir}/javancss.xml"/>
+  <target name="javancss-report" description="Run Code Complexity Report">
+    <taskdef name="javancss" classname="javancss.JavancssAntTask" classpathref="common.devlib.path"/>
+    <mkdir dir="${javancss.dir}"/>
+    <javancss srcdir="${src.dir}"
+              generatereport="true"
+              abortonfail="false"
+              outputfile="${javancss.xml.file}"
+              format="xml"
+              includes="**/*.java"/>
+    <xslt in="${javancss.xml.file}" style="${common.resource.dir}/wfncss.xsl" out="${javancss.dir}/javancss.html"/>
+  </target>
+
+  <property name="jdepend.dir" location="${build.dir}/jdepend"/>
+  <property name="jdepend.xml.file" location="${jdepend.dir}/jdepend.xml"/>
+
+  <macrodef name="jdepend-macro">
+    <element name="excludes" optional="true"/>
+    <sequential>
+      <jdepend outputfile="${jdepend.xml.file}" format="xml">
+        <excludes/>
+        <classespath>
+          <pathelement location="${build.classes.dir}"/>
+        </classespath>
+      </jdepend>
+    </sequential>
+  </macrodef>
+
+  <target name="jdepend-report" depends="clean, compile" description="Run jdepend report">
+    <mkdir dir="${jdepend.dir}"/>
+
+    <!-- jdepend-report is a macro to be defined in the build file that imports this build file -->
+    <jdepend-report/>
+    <xslt in="${jdepend.xml.file}" style="${common.resource.dir}/jdepend.xsl" out="${jdepend.dir}/jdepend.html"/>
+  </target>
+  <target name="reports" depends="emma-report, cpd-report, javancss-report, jdepend-report"/>
+
+  <target name="package" depends="clean, jar"/>
+</project>
