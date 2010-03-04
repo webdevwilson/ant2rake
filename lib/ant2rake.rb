@@ -23,7 +23,8 @@ module Ant2Rake
         out << ruby_code_for_element
       else
         # print undefined elements in comments
-        out << "\n=begin\n#{element}\n=end\n"
+        # out << "\n=begin\n#{element}\n=end\n"
+        out << Elements['default'].process(element)
       end
 
       @depth -= 1
